@@ -1,105 +1,122 @@
-import java.text.DecimalFormat;
-import java.text.NumberFormat;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 
 public class SlopeOne {
-	
-	private static Map<Recipe, Map<Recipe, Double>> difference = new HashMap<>();
-	private static Map<Recipe, Map<Recipe, Integer>> frequence = new HashMap<>();
-	private static Map<User, HashMap<Recipe, Double>> inputData;
-	private static Map<User, HashMap<Recipe, Double>> outputData = new HashMap<>();
-	
-	public static void slopeOne(int numberOfUsers) {
-		inputData = InputData.initializeData(numberOfUsers);
-		System.out.println("Slope One - Before the Prediction\n");
-        buildDifferencesMatrix(inputData);
-        System.out.println("\nSlope One - With Predictions\n");
-        predict(inputData);
-	}
-	
-	private static void buildDifferencesMatrix(Map<User, HashMap<Recipe, Double>> data) {
-        for (HashMap<Recipe, Double> user : data.values()) {
-            for (Entry<Recipe, Double> e : user.entrySet()) {
-                if (!difference.containsKey(e.getKey())) {
-                    difference.put(e.getKey(), new HashMap<Recipe, Double>());
-                    frequence.put(e.getKey(), new HashMap<Recipe, Integer>());
-                }
-                for (Entry<Recipe, Double> e2 : user.entrySet()) {
-                    int oldCount = 0;
-                    if (frequence.get(e.getKey()).containsKey(e2.getKey())) {
-                        oldCount = frequence.get(e.getKey()).get(e2.getKey()).intValue();
-                    }
-                    double oldDiff = 0.0;
-                    if (difference.get(e.getKey()).containsKey(e2.getKey())) {
-                        oldDiff = difference.get(e.getKey()).get(e2.getKey()).doubleValue();
-                    }
-                    double observedDiff = e.getValue() - e2.getValue();
-                    frequence.get(e.getKey()).put(e2.getKey(), oldCount + 1);
-                    difference.get(e.getKey()).put(e2.getKey(), oldDiff + observedDiff);
-                }
-            }
-        }
-        
-        for (Recipe j : difference.keySet()) {
-            for (Recipe i : difference.get(j).keySet()) {
-                double oldValue = difference.get(j).get(i).doubleValue();
-                int count = frequence.get(j).get(i).intValue();
-                difference.get(j).put(i, oldValue / count);
-            }
-        }
-        printData(data);
-    }
-	
-	private static void predict(Map<User, HashMap<Recipe, Double>> data) {
-        HashMap<Recipe, Double> uPred = new HashMap<Recipe, Double>();
-        HashMap<Recipe, Integer> uFreq = new HashMap<Recipe, Integer>();
-        for (Recipe j : difference.keySet()) {
-            uFreq.put(j, 0);
-            uPred.put(j, 0.0);
-        }
-        for (Entry<User, HashMap<Recipe, Double>> e : data.entrySet()) {
-            for (Recipe j : e.getValue().keySet()) {
-                for (Recipe k : difference.keySet()) {
-                    try {
-                        double predictedValue = difference.get(k).get(j).doubleValue() + e.getValue().get(j).doubleValue();
-                        double finalValue = predictedValue * frequence.get(k).get(j).intValue();
-                        uPred.put(k, uPred.get(k) + finalValue);
-                        uFreq.put(k, uFreq.get(k) + frequence.get(k).get(j).intValue());
-                    } catch (NullPointerException e1) {
-                    }
-                }
-            }
-            HashMap<Recipe, Double> clean = new HashMap<Recipe, Double>();
-            for (Recipe j : uPred.keySet()) {
-                if (uFreq.get(j) > 0) {
-                    clean.put(j, uPred.get(j).doubleValue() / uFreq.get(j).intValue());
-                }
-            }
-            for (Recipe j : InputData.items) {
-                if (e.getValue().containsKey(j)) {
-                    clean.put(j, e.getValue().get(j));
-                } else {
-                    clean.put(j, -1.0);
-                }
-            }
-            outputData.put(e.getKey(), clean);
-        }
-        printData(outputData);
-    }
 
-    private static void printData(Map<User, HashMap<Recipe, Double>> data) {
-        for (User user : data.keySet()) {
-            System.out.println(user.getName() + ":");
-            print(data.get(user));
-        }
-    }
-    
-    private static void print(HashMap<Recipe, Double> hashMap) {
-        NumberFormat formatter = new DecimalFormat("#0.000");
-        for (Recipe j : hashMap.keySet()) {
-            System.out.println(" " + j.getName() + " --> " + formatter.format(hashMap.get(j).doubleValue()));
-        }
-    }
+	Map<String, Map<String, Double>> mData;
+	Map<String, Map<String, Double>> diffMatrix;
+	Map<String, Map<String, Integer>> freqMatrix;
+	
+	static String[] mAllItems;
+
+	public SlopeOne(Map<String, Map<String, Double>> data, String[] items) {
+		mData = data;
+		this.mAllItems = items;
+		buildDiffMatrix();
+	}
+
+	/**
+	 * Based on existing data, and using weights, try to predict all missing
+	 * ratings. The trick to make this more scalable is to consider only mDiffMatrix
+	 * entries having a large (>1) mFreqMatrix entry.
+	 * 
+	 * It will output the prediction 0 when no prediction is possible.
+	 */
+	public Map<String, Double> predict(Map<String, Double> user) {
+		HashMap<String, Double> predictions = new HashMap<>();
+		HashMap<String, Integer> frequencies = new HashMap<>();
+		for (String j : diffMatrix.keySet()) {
+			frequencies.put(j, 0);
+			predictions.put(j, 0.0);
+		}
+		for (String j : user.keySet()) {
+			for (String k : diffMatrix.keySet()) {
+				try {
+					Double newval = (diffMatrix.get(k).get(j) + user.get(j)) * freqMatrix.get(k).get(j).intValue();
+					predictions.put(k, predictions.get(k) + newval);
+					frequencies.put(k, frequencies.get(k) + freqMatrix.get(k).get(j).intValue());
+				} catch (NullPointerException e) {
+				}
+			}
+		}
+		HashMap<String, Double> cleanpredictions = new HashMap<>();
+		for (String j : predictions.keySet()) {
+			if (frequencies.get(j) > 0) {
+				cleanpredictions.put(j, predictions.get(j) / frequencies.get(j).intValue());
+			}
+		}
+		for (String j : user.keySet()) {
+			cleanpredictions.put(j, user.get(j));
+		}
+		return cleanpredictions;
+	}
+
+	public void printData() {
+		for (String user : mData.keySet()) {
+			System.out.println(user);
+			print(mData.get(user));
+		}
+		for (int i = 0; i < mAllItems.length; i++) {
+			System.out.print("\n" + mAllItems[i] + ":");
+			printMatrixes(diffMatrix.get(mAllItems[i]), freqMatrix.get(mAllItems[i]));
+		}
+	}
+
+	private void printMatrixes(Map<String, Double> ratings, Map<String, Integer> frequencies) {
+		for (int j = 0; j < mAllItems.length; j++) {
+			System.out.format("%10.3f", ratings.get(mAllItems[j]));
+			System.out.print(" ");
+			System.out.format("%10d", frequencies.get(mAllItems[j]));
+		}
+		System.out.println();
+	}
+
+	public static void print(Map<String, Double> user) {
+		for (String j : user.keySet()) {
+			System.out.println(" " + j + " --> " + user.get(j).floatValue());
+		}
+	}
+
+	public void buildDiffMatrix() {
+		diffMatrix = new HashMap<>();
+		freqMatrix = new HashMap<>();
+		// first iterate through users
+		for (Map<String, Double> user : mData.values()) {
+			// then iterate through user data
+			for (Entry<String, Double> entry : user.entrySet()) {
+				String i1 = entry.getKey();
+				double r1 = entry.getValue();
+
+				if (!diffMatrix.containsKey(i1)) {
+					diffMatrix.put(i1, new HashMap<String, Double>());
+					freqMatrix.put(i1, new HashMap<String, Integer>());
+				}
+
+				for (Entry<String, Double> entry2 : user.entrySet()) {
+					String i2 = entry2.getKey();
+					double r2 = entry2.getValue();
+
+					int cnt = 0;
+					if (freqMatrix.get(i1).containsKey(i2))
+						cnt = freqMatrix.get(i1).get(i2);
+					double diff = 0.0;
+					if (diffMatrix.get(i1).containsKey(i2))
+						diff = diffMatrix.get(i1).get(i2);
+					double new_diff = r1 - r2;
+
+					freqMatrix.get(i1).put(i2, cnt + 1);
+					diffMatrix.get(i1).put(i2, diff + new_diff);
+				}
+			}
+		}
+		for (String j : diffMatrix.keySet()) {
+			for (String i : diffMatrix.get(j).keySet()) {
+				Double oldvalue = diffMatrix.get(j).get(i);
+				int count = freqMatrix.get(j).get(i).intValue();
+				diffMatrix.get(j).put(i, oldvalue / count);
+			}
+		}
+	}
+
 }
